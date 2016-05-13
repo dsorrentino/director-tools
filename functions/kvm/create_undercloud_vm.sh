@@ -36,21 +36,71 @@ then
   INF_NET="${INF_NET}-${X}"
 fi
 
-INF_SUBNET=100
-
-while [[ ! -z "$(ip a | grep 192.168.${INF_SUBNET})" ]]
+INF_SUBNET=''
+INF_PREFIX=''
+USER_INPUT=''
+stdout ""
+while [[ -z "${USER_INPUT}" ]]
 do
-  INF_SUBNET=$(( ${INF_SUBNET} + 1 ))
-  if [[ ${INF_SUBNET} -eq 255 ]]
+  read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] [A]utoselect infrastructure CIDR in the 192.168.* range or set [m]anually [A/m]? " USER_INPUT
+  if [[ -z "${USER_INPUT}" ]]
   then
-    stderr "Unable to find an external network range between 192.168.100.X-192.168.255.X."
-    exit 255
+    USER_INPUT='A'
   fi
+  USER_INPUT=$(echo ${USER_INPUT} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(A|M)')
 done
 
-INF_SUBNET=192.168.${INF_SUBNET}
+if [[ "${USER_INPUT}" == 'A' ]]
+then
+  INF_PREFIX='24'
+  INF_SUBNET=100
 
-stdout "Creating infrastructure network '${INF_NET}' with CIDR '${INF_SUBNET}.0/24'"
+  while [[ ! -z "$(ip a | grep inet | grep 192.168.${INF_SUBNET})" ]]
+  do
+    INF_SUBNET=$(( ${INF_SUBNET} + 1 ))
+    if [[ ${INF_SUBNET} -eq 255 ]]
+    then
+      stderr "Unable to find an external network range between 192.168.100.X-192.168.255.X."
+      exit 255
+    fi
+  done
+
+  INF_SUBNET=192.168.${INF_SUBNET}
+else
+  USER_INPUT=''
+  while [[ -z "${USER_INPUT}" ]]
+  do
+    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Enter the CIDR for the infrastructure network.  Minimum network size is a /24: " USER_INPUT
+    #  Very rudimentary CIDR pattern matching
+    USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\/[0-9]{1,3}')
+    if [[ ! -z "${USER_INPUT}" ]]
+    then
+      if [[ $(echo ${USER_INPUT} | awk -F/ '{print $2}') -gt 24 ]]
+      then
+        USER_INPUT=''
+      else
+        INF_SUBNET=$(echo ${USER_INPUT} | awk -F\. '{print $1"."$2"."$3}')
+        if [[ ! -z "$(ip a | grep inet | grep ${INF_SUBNET})" ]]
+        then
+          stdout "It looks like ${INF_SUBNET} is already on an interface."
+          ip a | grep ${INF_SUBNET}
+          USER_INPUT=''
+        fi
+      fi
+    fi
+
+
+  done
+  INF_SUBNET=$(echo ${USER_INPUT} | awk -F\. '{print $1"."$2"."$3}')
+  INF_PREFIX=$(echo ${USER_INPUT} | awk -F/ '{print $NF}')
+fi
+
+INF_NETMASK=$(cidr2mask ${INF_PREFIX})
+
+echo ""
+stdout "Creating infrastructure network '${INF_NET}' with CIDR '${INF_SUBNET}.0/${INF_PREFIX}'"
+
+INF_NET_DHCP="<range start='${INF_SUBNET}.2' end='${INF_SUBNET}.254'/>"
 
 cat > /tmp/${INF_NET}.xml <<EOF
 <network>
@@ -60,9 +110,9 @@ cat > /tmp/${INF_NET}.xml <<EOF
       <port start='1024' end='65535'/>
     </nat>
   </forward>
-  <ip address='${INF_SUBNET}.1' netmask='255.255.255.0'>
+  <ip address='${INF_SUBNET}.1' netmask='${INF_NETMASK}'>
     <dhcp>
-      <range start='${INF_SUBNET}.2' end='${INF_SUBNET}.254'/>
+      ${INF_NET_DHCP}
     </dhcp>
   </ip>
 </network>
@@ -292,13 +342,24 @@ if [[ -f ${DIRECTOR_TOOLS}/logs/remote_configure_undercloud_vm*.err ]]
     exit 1
 fi
 
-stdout "Rebooting undercloud VM. Connection refused messages are normal.  Disregard."
+stdout "Stopping undercloud VM."
 
-ssh root@${UNDERCLOUD_DHCP_IP} 'reboot'
+ssh root@${UNDERCLOUD_DHCP_IP} 'shutdown -hP now'
+
+while [[ ! -z "$(${SUDO} virsh list | grep undercloud)" ]]
+do
+  sleep 5
+done
+
+stdout "Removing DHCP from the infrastructure network."
+
+${SUDO} virsh net-update --network ${INF_NET} --section ip-dhcp-range --command delete --live --xml "${INF_NET_DHCP}"
+
+stdout "Restarting undercloud VM."
+
+${SUDO} virsh start undercloud
 
 wait4reboot ${UNDERCLOUD_IP_ADDRESS}
-
-UNDERCLOUD_DHCP_IP=${UNDERCLOUD_IP_ADDRESS}
 
 stdout "Undercloud is back up."
 

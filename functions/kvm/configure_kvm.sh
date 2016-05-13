@@ -158,6 +158,7 @@ EOF
 
 ${SUDO} cp ${WORKING_FILE} /etc/polkit-1/localauthority/50-local.d/50-libvirt-user-${LIBVIRT_USER}.pkla
 ${SUDO} chmod 0644 /etc/polkit-1/localauthority/50-local.d/50-libvirt-user-${LIBVIRT_USER}.pkla
+${SUDO} rm ${WORKING_FILE}
 
 if [[ ${ERROR_COUNT} -gt 0 ]]
 then
