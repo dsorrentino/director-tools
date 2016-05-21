@@ -1,11 +1,11 @@
 #!/bin/bash
 
-SCRIPT_NAME=remote_configure_undercloud-2
+SCRIPT_NAME=remote_undercloud_configure-2
 
 LOG=${SCRIPT_NAME}.log
 
-source undercloud.env
-source common.sh
+source ~/undercloud.env
+source ~/common.sh
 
 stdout ""
 stdout "${SCRIPT_NAME} start"

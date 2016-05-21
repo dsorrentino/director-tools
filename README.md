@@ -3,19 +3,21 @@ The initial purpose of these scripts is to make it easy to get an undercloud VM 
 Eventually I'd like to expand these scripts so they can possibly provide some of the functionality below to a cloud utilizing
 physical hosts.
 
-The function of each script is broken down below.  The framework is driven off of the 2 environmental files located in the
+The function of each script is broken down below.  The framework is driven off of the 3 environmental files located in the
 config directory which contain all of the base settings for the environment:
 
-
-config/undercloud.env
-config/overcloud.env
+environment/director-tools.env
+environment/undercloud.env
+environment/overcloud.env
 
 As a "to do", I'd like to have each script take a '--default' argument which will disable the prompting systems and just drive
 everything off of the 2 environmental files in the config directory.
 
-Before running any of these files, you must configure DIRECTOR_TOOLS variable to point to where you
+Before running any of these files, you must configure DIRECTOR_TOOLS variable in environment/director-tools.env to point to where you
+installed these scripts.
 
-Script: undercloud_prepare.sh
+Script: undercloud_create_vm.sh
+Description: To be used to create the VM which Director will be installed on
 Functions:
   - Configures KVM
     - Configures nested virtualization
@@ -44,10 +46,15 @@ Functions:
   - Takes a snapshot of the VM at completion
   - Copies all logs into the logs directory
 
-
-After this script finishes, you need to login to the Undercloud VM and subscribe it to somewhere before continuing.
-
 Script: undercloud_configure.sh
+Description: This script will configure the VM to install the Director packages.  The VM may or may not have been created
+             by the undercloud_create_vm.sh script.  If it was not created by that script, ensure you've configured the
+             environment/undercloud.env by hand for the following variables:
+            
+             UNDERCLOUD_IP
+             UNDERCLOUD_USER
+             UNDERCLOUD_USER_PW
+
 Functions:
   - Copies SSH key to the Undercloud user
   - Creates the images and templates directory in the Undercloud user home directory
@@ -61,26 +68,24 @@ Functions:
   - Copies all logs into the logs directory
 
 Script: undercloud_deploy.sh
+Description: This runs the 'openstack undercloud install' command and logs the output.  Upon completion
+             it copies the logs back down to the DIRECTOR_INSTALL/logs directory.
 Functions:
   - Execute openstack undercloud install
   - Takes a snapshot of the VM at completion
   - Copies all logs into the logs directory
 
-Script: overcloud_prepare.sh
+Script: overcloud_create_vms.sh
+Description: Used for creating a lab-like environment on a single KVM host.
 Functions:
   - Prompts & creates the various networks for the overcloud
-  - Maps the KVM networks to the Overcloud Network Types (External, Internal API, Tenant, Storage, StorageMgmt, FloatingIP)
-  - Added flexibility to add additional networks to the VM's for other functions (Provider networks)
+  - Number of NIC's is configureable for each node type (control, compute, ceph-storage)
   - Configures NAT for networks designated as External or Floating IP networks
   - Prompts and deletes any previous VM's with *overcloud* in the name
   - Gather specs (CPU, Memory, Disk count, Disk size and node count) for each node type (controller, compute, ceph)
   - Gather specs (Disk count, Disk size) for OSD drives for ceph
   - Creates all necessary disk files
-  - Intelligently attaches VM's to networks:
-    - Ensuring there is a 1:1 mapping of NIC to network
-    - Controller nodes attach to Provisioning, External, InternalAPI, Tenant, Storage, StorageMgmt, FloatingIP
-    - Compute nodes attach to InternalAPI, Tenant, Storage
-    - Ceph nodes attach to InternalAPI Storage StorageMgmt
+  - Connects KVM networks to specific NIC ports to help in replicating a customer environment
   - Creates an instackenv.json file in the Undercloud user home directory that is ready for introspection
   - Installs the overcloud images RPM and extracts the images into the appropriate images directory in the Undercloud user home directory
   - Sets the root password on the overcloud image

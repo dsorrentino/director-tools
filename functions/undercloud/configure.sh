@@ -1,61 +1,64 @@
 #!/bin/bash
 
-SCRIPT_NAME="undercloud-configure"
+source ${DIRECTOR_TOOLS}/functions/common.sh
+source ${DIRECTOR_TOOLS}/environment/undercloud.env
+
+SCRIPT_NAME="undercloud_configure"
 
 LOG=${DIRECTOR_TOOLS}/logs/${SCRIPT_NAME}.log
-
-UNDERCLOUD_IP_ADDRESS=$(echo ${UNDERCLOUD_IP} | awk -F/ '{print $1}')
 
 stdout ""
 stdout "${SCRIPT_NAME} start"
 stdout ""
 
-stdout "Copying ssh-key to ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS}. When prompted, enter the password."
-echo "This should be: ${UNDERCLOUD_USER_PW}"
-ssh-copy-id ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS}
+stdout "Copying ssh-key to ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}. When prompted, enter the password."
+stdout ""
+echo "If the undercloud VM was created as part of this framework, this should be: ${UNDERCLOUD_USER_PW}"
+stdout ""
+ssh-copy-id ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}
 
-scp ${DIRECTOR_TOOLS}/functions/undercloud/remote_configure_undercloud*.sh ${DIRECTOR_TOOLS}/config/undercloud.env ${DIRECTOR_TOOLS}/functions/common.sh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS}:~
+scp ${DIRECTOR_TOOLS}/functions/undercloud/remote_undercloud_configure*.sh ${DIRECTOR_TOOLS}/environment/undercloud.env ${DIRECTOR_TOOLS}/functions/common.sh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:~
 
-ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS} 'chmod 600 undercloud.env'
-ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS} 'chmod 775 ~/remote_configure_undercloud*.sh'
-ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS} '~/remote_configure_undercloud-1.sh'
+ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'chmod 600 undercloud.env'
+ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'chmod 775 ~/remote_undercloud_configure*.sh'
+ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} '~/remote_undercloud_configure-1.sh'
 
-rm -f ${DIRECTOR_TOOLS}/logs/remote_configure_undercloud-1*log*
+rm -f ${DIRECTOR_TOOLS}/logs/remote_undercloud_configure-1*log*
 
-scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS}:~/remote_configure_undercloud-1*log* ${DIRECTOR_TOOLS}/logs
-ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS} 'rm -f ~/remote_configure_undercloud-1*'
+scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:~/remote_undercloud_configure-1*log* ${DIRECTOR_TOOLS}/logs
+ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'rm -f ~/remote_undercloud_configure-1*'
 
-if [[ ! -z "$(ls ${DIRECTOR_TOOLS}/logs/remote_configure_undercloud-1*.err 2>/dev/null)" ]]
+if [[ ! -z "$(ls ${DIRECTOR_TOOLS}/logs/remote_undercloud_configure-1*.err 2>/dev/null)" ]]
 then
   stderr "There was an error executing the remote script.  Please check logs:"
-  cat ${DIRECTOR_TOOLS}/logs/remote_configure_undercloud-1*.err
+  cat ${DIRECTOR_TOOLS}/logs/remote_undercloud_configure-1*.err
   exit 1
 fi
 
-ssh root@${UNDERCLOUD_IP_ADDRESS} 'reboot'
+ssh root@${UNDERCLOUD_IP} 'reboot'
 
-wait4reboot ${UNDERCLOUD_IP_ADDRESS}
+wait4reboot ${UNDERCLOUD_IP}
 
-ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS} '~/remote_configure_undercloud-2.sh'
+ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} '~/remote_undercloud_configure-2.sh'
 
-rm -f ${DIRECTOR_TOOLS}/logs/remote_configure_undercloud-2*log*
+rm -f ${DIRECTOR_TOOLS}/logs/remote_undercloud_configure-2*log*
 
-scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS}:~/remote_configure_undercloud-2*log* ${DIRECTOR_TOOLS}/logs
+scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:~/remote_undercloud_configure-2*log* ${DIRECTOR_TOOLS}/logs
 
-ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS} 'rm -f ~/remote_configure_undercloud-2*'
+ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'rm -f ~/remote_undercloud_configure-2*'
 
-if [[ ! -z "$(ls ${DIRECTOR_TOOLS}/logs/remote_configure_undercloud-2*.err 2>/dev/null)" ]]
+if [[ ! -z "$(ls ${DIRECTOR_TOOLS}/logs/remote_undercloud_configure-2*.err 2>/dev/null)" ]]
 then
   stderr "There was an error executing the remote script.  Please check logs:"
-  cat ${DIRECTOR_TOOLS}/logs/remote_configure_undercloud-2*.err
+  cat ${DIRECTOR_TOOLS}/logs/remote_undercloud_configure-2*.err
   exit 1
 fi
 
-scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS}:/usr/share/instack-undercloud/undercloud.conf.sample ${DIRECTOR_TOOLS}/config/undercloud.conf.sample
+scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:/usr/share/instack-undercloud/undercloud.conf.sample ${DIRECTOR_TOOLS}/run/undercloud.conf.sample
 
-cp ${DIRECTOR_TOOLS}/config/undercloud.conf.sample ${DIRECTOR_TOOLS}/config/undercloud.conf
+cp ${DIRECTOR_TOOLS}/run/undercloud.conf.sample ${DIRECTOR_TOOLS}/run/undercloud.conf
 
-UNDERCLOUD_CONF=${DIRECTOR_TOOLS}/config/undercloud.conf
+UNDERCLOUD_CONF=${DIRECTOR_TOOLS}/run/undercloud.conf
 
 stdout ""
 stdout "Configure undercloud.conf"
@@ -76,7 +79,7 @@ do
   fi
 
   stdout "Setting: ${SETTING_ENTRY}"
-  if [[ ! -z "$(echo ${SETTING_ENTRY} | grep ^#)" ]]
+  if [[ ! -z "$(echo ${SETTING_ENTRY} | egrep '^#')" ]]
   then
     while [[ -z "${ANSWER}" ]]
     do
@@ -103,8 +106,8 @@ do
     fi
    
   fi
-  SETTING_ENTRY=$(egrep "^[#]*${SETTING} " ${UNDERCLOUD_CONF})
-  if [[ -z "$(echo ${SETTING_ENTRY} | grep ^#)" ]]
+  SETTING_ENTRY=$(egrep "^[\#]*${SETTING} " ${UNDERCLOUD_CONF})
+  if [[ -z "$(echo ${SETTING_ENTRY} | egrep '^#')" ]]
   then
     SETTING_VALUE=$(echo ${SETTING_ENTRY} | awk -F= '{print $2}' | sed 's/^  *//g;s/  *$//g')
     if [[ ! -z "$(eval echo \$${SETTING_VARIABLE})" ]]
@@ -138,7 +141,9 @@ done
 
 stdout "Copying undercloud.conf to the ${UNDERCLOUD_USER} users home directory on the undercloud."
 
-scp ${UNDERCLOUD_CONF} ${UNDERCLOUD_USER}@${UNDERCLOUD_IP_ADDRESS}:~
+scp ${UNDERCLOUD_CONF} ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:~
+
+ssh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'rm -f ~/common.sh ~/undercloud.env'
 
 stdout ""
 stdout "${SCRIPT_NAME} end"

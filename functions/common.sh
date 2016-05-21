@@ -87,8 +87,6 @@ function kvm_snapshot {
     fi
   fi
 
-  echo "SUDO: ${SUDO}"
-
   if [[ ! -z "$(${SUDO} virsh snapshot-list undercloud | grep ${SNAP_INFO})" ]]
   then
     X=1

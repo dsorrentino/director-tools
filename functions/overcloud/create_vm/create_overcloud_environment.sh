@@ -1,5 +1,9 @@
 #!/bin/bash
 
+source ${DIRECTOR_TOOLS}/environment/undercloud.env
+source ${DIRECTOR_TOOLS}/environment/overcloud.env
+source ${DIRECTOR_TOOLS}/functions/common.sh
+
 SCRIPT_NAME=create_overcloud_vms
 
 stdout ""
@@ -8,7 +12,6 @@ stdout ""
 
 LOG=${DIRECTOR_TOOLS}/logs/${SCRIPT_NAME}.log
 
-source ${DIRECTOR_TOOLS}/config/undercloud.env
 
 LIBVIRT_IMAGE_DIR=/var/lib/libvirt/images
 
@@ -161,21 +164,21 @@ do
     stdout "Deleting network: ${NETWORK_NAME} (did not exist)"
   fi
   SUBNET_VAR="NETWORK_$(echo ${NETWORK_NAME} | tr '[:lower:]' '[:upper:]')_SUBNET"
-  sed -i "/^${SUBNET_VAR}=/d" ${DIRECTOR_TOOLS}/config/overcloud.env
+  sed -i "/^${SUBNET_VAR}=/d" ${DIRECTOR_TOOLS}/environment/overcloud.env
 done
 
 # Remove the provisioning network from the overcloud
 # configuration since that was created as part of
 # the undercloud
 NETWORK_LIST=$(echo ",${NETWORK_LIST}," | sed 's/,provisioning,/,/g' | sed 's/,/ /g;s/^  *//g;s/  *$//g;s/  */,/g')
-sed -i "s/^NETWORK_LIST=.*/NETWORK_LIST=${NETWORK_LIST}/" ${DIRECTOR_TOOLS}/config/overcloud.env
+sed -i "s/^NETWORK_LIST=.*/NETWORK_LIST=${NETWORK_LIST}/" ${DIRECTOR_TOOLS}/environment/overcloud.env
 
 for NETWORK_NAME in $(echo ${NETWORK_LIST} | sed 's/,/ /g')
 do
   SUBNET_VAR="NETWORK_$(echo ${NETWORK_NAME} | tr '[:lower:]' '[:upper:]')_SUBNET"
-  if [[ -z "$(grep "^${SUBNET_VAR}=" ${DIRECTOR_TOOLS}/config/overcloud.env)" ]]
+  if [[ -z "$(grep "^${SUBNET_VAR}=" ${DIRECTOR_TOOLS}/environment/overcloud.env)" ]]
   then
-    echo "${SUBNET_VAR}=" >> ${DIRECTOR_TOOLS}/config/overcloud.env
+    echo "${SUBNET_VAR}=" >> ${DIRECTOR_TOOLS}/environment/overcloud.env
   fi
 done
 
@@ -210,7 +213,7 @@ do
         NETMASK=$(grep 'ip address' /tmp/${NETWORK_NAME}.xml | awk -F\' '{print $4}')
         NETMASK=$(mask2cidr ${NETMASK})
         stdout "CIDR for network '${NETWORK_NAME}': ${SUBNET}/${NETMASK}"
-        sed -i "s|^${SUBNET_VAR}=.*|${SUBNET_VAR}=${SUBNET}/${NETMASK}|" ${DIRECTOR_TOOLS}/config/overcloud.env
+        sed -i "s|^${SUBNET_VAR}=.*|${SUBNET_VAR}=${SUBNET}/${NETMASK}|" ${DIRECTOR_TOOLS}/environment/overcloud.env
       fi
     done
   fi
@@ -241,176 +244,8 @@ do
       fi
     done
     eval "${SUBNET_VAR}='${USER_INPUT}'"
-    sed -i "s|^${SUBNET_VAR}=.*|${SUBNET_VAR}=${USER_INPUT}|" ${DIRECTOR_TOOLS}/config/overcloud.env
+    sed -i "s|^${SUBNET_VAR}=.*|${SUBNET_VAR}=${USER_INPUT}|" ${DIRECTOR_TOOLS}/environment/overcloud.env
   fi
-done
-
-source ${DIRECTOR_TOOLS}/config/overcloud.env
-
-declare -A NETWORK_TYPE
-
-NETWORK_TYPE[InternalAPI]=''
-NETWORK_TYPE[InternalAPI_desc]='The Internal API network is used for communication between the OpenStack services via API communication, RPC messages, and database communication. '
-NETWORK_TYPE[Tenant]=''
-NETWORK_TYPE[Tenant_desc]='Neutron provides each tenant with their own networks using either VLAN segregation, where each tenant network is a network VLAN, or tunneling through VXLAN or GRE. Network traffic is isolated within each tenant network. Each tenant network has an IP subnet associated with it, and multiple tenant networks may use the same addresses.'
-NETWORK_TYPE[Storage]=''
-NETWORK_TYPE[Storage_desc]='Block Storage, NFS, iSCSI, and others. Ideally, this would be isolated to an entirely separate switch fabric for performance reasons.'
-NETWORK_TYPE[StorageMgmt]=''
-NETWORK_TYPE[StorageMgmt_desc]='OpenStack Object Storage (swift) uses this network to synchronize data objects between participating replica nodes. The proxy service acts as the intermediary interface between user requests and the underlying storage layer. The proxy receives incoming requests and locates the necessary replica to retrieve the requested data. Services that use a Ceph backend connect over the Storage Management network, since they do not interact with Ceph directly but rather use the frontend service. Note that the RBD driver is an exception; this traffic connects directly to Ceph.'
-NETWORK_TYPE[External]=''
-NETWORK_TYPE[External_desc]='Hosts the OpenStack Dashboard (horizon) for graphical system management, Public APIs for OpenStack services, and performs SNAT for incoming traffic destined for instances. If the external network uses private IP addresses (as per RFC-1918), then further NAT must be performed for traffic originating from the internet. '
-NETWORK_TYPE[FloatingIP]=''
-NETWORK_TYPE[FloatingIP_desc]='Allows incoming traffic to reach instances using 1-to-1 IP address mapping between the floating IP address, and the IP address actually assigned to the instance in the tenant network. If hosting the Floating IPs on a VLAN separate from External, trunk the Floating IP VLAN to the Controller nodes and add the VLAN through Neutron after Overcloud creation. This provides a means to create multiple Floating IP networks attached to multiple bridges. The VLANs are trunked but not configured as interfaces. Instead, Neutron creates an OVS port with the VLAN segmentation ID on the chosen bridge for each Floating IP network. '
-
-stdout ""
-stdout "To implement network isolation, you need to associate each KVM network with a specific Network Type."
-stdout "Details on network types can be found here:"
-stdout ""
-stdout "http://docs.openstack.org/developer/tripleo-docs/advanced_deployment/network_isolation.html"
-stdout ""
-stdout "If you don't wish to isolate traffic, feel free to select the same KVM network for multiple Network Types."
-stdout ""
-
-if [[ $(echo ${NETWORK_LIST} | sed 's/,/ /g' | wc -w) -eq 1 ]]
-then
-  for NET_TYPE in InternalAPI Tenant Storage StorageMgmt External FloatingIP
-  do
-    stdout "Setting '${NET_TYPE}' network to use '${NETWORK_LIST}'."
-    NETWORK_TYPE[${NET_TYPE}]=${NETWORK_LIST}
-  done
-else
-  for NET_TYPE in InternalAPI Tenant Storage StorageMgmt External FloatingIP
-  do
-    stdout ""
-    stdout "== ${NET_TYPE} =="
-    stdout ""
-    while [[ -z "${NETWORK_TYPE[${NET_TYPE}]}" ]]
-    do
-      DEFAULT=''
-      stdout ""
-      X=0
-      for NETWORK in $(echo ${NETWORK_LIST} | sed 's/,/ /g')
-      do
-        X=$(( ${X} + 1 ))
-        stdout "[${X}] ${NETWORK}"
-        if [[ "$(echo ${NETWORK} | tr '[:upper:]' '[:lower:'])" == "$(echo ${NET_TYPE} | tr '[:upper:]' '[:lower:'])" ]]
-        then
-          DEFAULT=${X}
-        fi
-      done
-      stdout ""
-      USER_INPUT=''
-      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Select a KVM network 1-${X} for the ${NET_TYPE} network or enter I for additional information on the network type [${DEFAULT}]: " USER_INPUT
-      if [[ -z "${USER_INPUT}" ]]
-      then
-        USER_INPUT=${DEFAULT}
-      fi
-      USER_INPUT=$(echo ${USER_INPUT} | cut -c1 | tr '[:lower:]' '[:upper:]')
-      if [[ "${USER_INPUT}" == 'I' ]]
-      then
-        stdout ""
-        stdout "============================================================="
-        stdout "${NET_TYPE} description: ${NETWORK_TYPE[${NET_TYPE}_desc]}"
-        stdout "============================================================="
-        stdout ""
-      fi
-      USER_INPUT=$(echo ${USER_INPUT} | egrep -o '^[1-9][0-9]*')
-      if [[ ! -z "${USER_INPUT}" ]]
-      then
-        if [[ ${USER_INPUT} -ge 1 && ${USER_INPUT} -le ${X} ]]
-        then
-          X=0
-          for NETWORK in $(echo ${NETWORK_LIST} | sed 's/,/ /g')
-          do
-            X=$(( ${X} + 1 ))
-            if [[ ${X} -eq ${USER_INPUT} ]]
-            then
-              NETWORK_TYPE[${NET_TYPE}]=${NETWORK}
-            fi
-          done
-        fi
-      fi
-    done
-  done
-fi
-
-stdout ""
-
-for NET_TYPE in InternalAPI Tenant Storage StorageMgmt External FloatingIP
-do
-  stdout "Network type ${NET_TYPE} set to use ${NETWORK_TYPE[${NET_TYPE}]}."
-done
-
-stdout ""
-stdout "These networks will be plumbed to the following node types:"
-stdout ""
-
-declare -A NETWORK_MAP
-
-NETWORK_MAP[controller]='External InternalAPI Tenant Storage StorageMgmt FloatingIP'
-NETWORK_MAP[compute]='InternalAPI Tenant Storage'
-NETWORK_MAP[ceph]='InternalAPI Storage StorageMgmt'
-
-NETWORK_TYPE[controller]=''
-NETWORK_TYPE[compute]=''
-NETWORK_TYPE[ceph]=''
-
-for NODE_TYPE in controller compute ceph
-do
-  stdout "Node type: ${NODE_TYPE}"
-  stdout "Network types: ${NETWORK_MAP[${NODE_TYPE}]}"
-  for NET_TYPE in ${NETWORK_MAP[${NODE_TYPE}]}
-  do
-    stdout "KVM Network: ${NETWORK_TYPE[${NET_TYPE}]} (${NET_TYPE})"
-  done
-  stdout ""
-  stdout "Besides the networks listed above, do you want any additional"
-  stdout "networks connected to this VM, such as a network connection for a"
-  stdout "provider network."
-  stdout ""
-
-  USER_INPUT=''
-  while [[ -z "${USER_INPUT}" ]]
-  do
-    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Connect an additional network to all ${NODE_TYPE} nodes [y/N]? " USER_INPUT
-    if [[ -z "${USER_INPUT}" ]]
-    then
-      USER_INPUT='N'
-    fi
-    USER_INPUT=$(echo ${USER_INPUT} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(Y|N)')
-    if [[ "${USER_INPUT}" == 'Y' ]]
-    then
-     stdout ""
-      X=0
-      for NETWORK in $(${SUDO} virsh net-list --all | egrep -v -- '(Autostart|------|^$)' | awk '{print $1}' | sort -u)
-      do
-        X=$(( ${X} + 1 ))
-        stdout "[${X}] ${NETWORK}"
-      done
-      stdout ""
-      USER_INPUT=''
-      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Select network (1-${X})? " USER_INPUT
-      USER_INPUT=$(echo ${USER_INPUT} | egrep -o '^[1-9][0-9]*')
-      if [[ ! -z "${USER_INPUT}" ]]
-      then
-        if [[ ${USER_INPUT} -ge 1 && ${USER_INPUT} -le ${X} ]]
-        then
-          X=0
-          for NETWORK in $(${SUDO} virsh net-list --all | egrep -v -- '(Autostart|------|^$)' | awk '{print $1}' | sort -u)
-          do
-            X=$(( ${X} + 1 ))
-            if [[ ${X} -eq ${USER_INPUT} ]]
-            then
-              stdout "Attaching ${NETWORK} to all ${NODE_TYPE} nodes."
-              NETWORK_TYPE[${NODE_TYPE}]="${NETWORK_TYPE[${NODE_TYPE}]} ${NETWORK}"
-            fi
-          done
-          USER_INPUT=''
-        fi
-      fi
-      stdout ""
-    fi
-  done
 done
 
 stdout ""
@@ -530,6 +365,8 @@ do
   QUESTION[RAM]="How much RAM (in MB) should each ${NODE_TYPE} node be configured with (must be greater than 0, number only)"
   QUESTION[DISK_COUNT]="How many disks should each ${NODE_TYPE} node be configured with (must be greater than 0)"
   QUESTION[DISK_SIZE]="What is the size (in GB) of each disk in each ${NODE_TYPE} node (must be greater than 0, number only)"
+  QUESTION[NIC_PORTS]="How many NIC ports in each ${NODE_TYPE} node (must be 2 or greater)"
+
   if [[ "${NODE_TYPE}" == "ceph" ]]
   then
     QUESTION[DISK_COUNT]="How many disks should each ${NODE_TYPE} node be configured with (must be greater than 0, exclude OSDs)"
@@ -541,41 +378,48 @@ do
   stdout ""
   stdout "Configure: ${NODE_TYPE}"
   stdout ""
-  for SETTING in COUNT VCPU RAM DISK_COUNT DISK_SIZE
+  for SETTING in COUNT VCPU RAM DISK_COUNT DISK_SIZE NIC_PORTS
   do
     if [[ "${SKIP_CONFIG}" == 'N' ]]
     then
-      COUNT_VAR="$(echo ${NODE_TYPE} | tr '[:lower:]' '[:upper:]')_${SETTING}"
-      DEFAULT_COUNT=$(eval echo \$${COUNT_VAR})
+      NODE_SETTING="$(echo ${NODE_TYPE} | tr '[:lower:]' '[:upper:]')_${SETTING}"
+      DEFAULT_SETTING=$(eval echo \$${NODE_SETTING})
       USER_INPUT=''
       USER_QUESTION=${QUESTION[${SETTING}]}
       while [[ -z "${USER_INPUT}" ]]
       do
-        read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] ${USER_QUESTION} [${DEFAULT_COUNT}]: " USER_INPUT
+        read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] ${USER_QUESTION} [${DEFAULT_SETTING}]: " USER_INPUT
         if [[ -z "${USER_INPUT}" ]]
         then
-          USER_INPUT=${DEFAULT_COUNT}
+          USER_INPUT=${DEFAULT_SETTING}
         fi
         USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9][0-9]*')
-        if [[ ${USER_INPUT} -eq 0 ]]
-        then
-          if [[ "${SETTING}" == "COUNT" ]]
+        if [[ ! -z "${USER_INPUT}" ]]
+       then
+          if [[ "${SETTING}" == "NIC_PORTS" && ${USER_INPUT} -lt 2 ]]
           then
-            SKIP_CONFIG='Y'
-          else
             USER_INPUT=''
+          fi
+          if [[ ${USER_INPUT} -eq 0 ]]
+          then
+            if [[ "${SETTING}" == "COUNT" ]]
+            then
+              SKIP_CONFIG='Y'
+            else
+              USER_INPUT=''
+            fi
           fi
         fi
       done
   
       stdout "Setting ${NODE_TYPE} node $(echo ${SETTING} | tr '[:upper:]' '[:lower:]') to: ${USER_INPUT}"
-      sed -i "s|^${COUNT_VAR}=.*|${COUNT_VAR}=${USER_INPUT}|" ${DIRECTOR_TOOLS}/config/overcloud.env
+      sed -i "s|^${NODE_SETTING}=.*|${NODE_SETTING}=${USER_INPUT}|" ${DIRECTOR_TOOLS}/environment/overcloud.env
 
     fi
   done
 done
 
-source ${DIRECTOR_TOOLS}/config/overcloud.env
+source ${DIRECTOR_TOOLS}/environment/overcloud.env
 
 if [[ ${CEPH_COUNT} -gt 0 ]]
 then
@@ -584,27 +428,27 @@ then
   QUESTION[OSD_DISK_SIZE]="What is the size (in GB) of each OSD disk in each ${NODE_TYPE} node (must be greater than 0, number only)"
   for SETTING in OSD_DISK_COUNT OSD_DISK_SIZE
   do
-    COUNT_VAR="$(echo ${NODE_TYPE} | tr '[:lower:]' '[:upper:]')_${SETTING}"
-    DEFAULT_COUNT=$(eval echo \$${COUNT_VAR})
+    NODE_SETTING="$(echo ${NODE_TYPE} | tr '[:lower:]' '[:upper:]')_${SETTING}"
+    DEFAULT_SETTING=$(eval echo \$${NODE_SETTING})
     USER_INPUT=''
     USER_QUESTION=${QUESTION[${SETTING}]}
     while [[ -z "${USER_INPUT}" ]]
     do
-      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] ${USER_QUESTION} [${DEFAULT_COUNT}]: " USER_INPUT
+      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] ${USER_QUESTION} [${DEFAULT_SETTING}]: " USER_INPUT
       if [[ -z "${USER_INPUT}" ]]
       then
-        USER_INPUT=${DEFAULT_COUNT}
+        USER_INPUT=${DEFAULT_SETTING}
       fi
       USER_INPUT=$(echo ${USER_INPUT} | egrep '[1-9][0-9]*')
     done
 
     stdout "Setting ${NODE_TYPE} node $(echo ${SETTING} | tr '[:upper:]' '[:lower:]') to: ${USER_INPUT}"
-    sed -i "s|^${COUNT_VAR}=.*|${COUNT_VAR}=${USER_INPUT}|" ${DIRECTOR_TOOLS}/config/overcloud.env
+    sed -i "s|^${NODE_SETTING}=.*|${NODE_SETTING}=${USER_INPUT}|" ${DIRECTOR_TOOLS}/environment/overcloud.env
 
   done
 fi
 
-source ${DIRECTOR_TOOLS}/config/overcloud.env
+source ${DIRECTOR_TOOLS}/environment/overcloud.env
 
 
 DATE=$(date +'%Y%m%d-%H%M')
@@ -649,33 +493,74 @@ then
   done
 fi
 
+declare -A NETWORK_CONNECTIONS
+
+for NODE_TYPE in controller compute ceph 
+do
+  NETWORK_CONNECTIONS[${NODE_TYPE}]=''
+done
+
+for NODE_TYPE in controller compute ceph 
+do
+  NODE_COUNT="$(echo ${NODE_TYPE} | tr '[:lower:]' '[:upper:]')_COUNT"
+  NODE_COUNT=$(eval echo \$${NODE_COUNT})
+  if [[ ${NODE_COUNT} -gt 0 ]]
+  then
+    stdout ""
+    stdout "Configure the NIC ports for '${NODE_TYPE}' nodes."
+    stdout ""
+    NIC_COUNT="$(echo ${NODE_TYPE} | tr '[:lower:]' '[:upper:]')_NIC_PORTS"
+    NIC_COUNT=$(eval echo \$${NIC_COUNT})
+    NIC_COUNT=$(( ${NIC_COUNT} - 1 ))
+    for ETH in $(seq 0 ${NIC_COUNT})
+    do
+      USER_INPUT=''
+      while [[ -z "${USER_INPUT}" ]]
+      do
+        stdout "For all ${NODE_TYPE} nodes, connect eth${ETH} to:"
+        stdout ""
+        NET_INDEX=1
+        for NETWORK in provisioning $(echo ${NETWORK_LIST} | sed 's/,/ /g')
+        do
+          echo "[$(date +'%Y/%m/%d-%H:%M:%S')] ${NET_INDEX} - ${NETWORK}"
+          NET_INDEX=$(( ${NET_INDEX} + 1 ))
+        done
+        stdout ""
+  
+        read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] For all ${NODE_TYPE} nodes, connect eth${ETH} to: " USER_INPUT
+        USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9][0-9]*')
+        if [[ ${USER_INPUT} -lt 1 || ${USER_INPUTE} -ge ${NET_INDEX} ]]
+        then
+          USER_INPUT=''
+        fi
+      done
+      NET_INDEX=1
+      for NETWORK in provisioning $(echo ${NETWORK_LIST} | sed 's/,/ /g')
+      do
+        if [[ ${NET_INDEX} -eq ${USER_INPUT} ]]
+        then
+          stdout ""
+          stdout "Connecting eth${ETH} to ${NETWORK}."
+          stdout ""
+          NETWORK_CONNECTIONS[${NODE_TYPE}]="${NETWORK_CONNECTIONS[${NODE_TYPE}]} ${NETWORK}"
+        fi
+        NET_INDEX=$(( ${NET_INDEX} + 1 ))
+      done
+    done
+  fi
+done
+
 stdout ""
 stdout "Creating Virtual Machines."
 stdout ""
 
 if [[ ${CONTROLLER_COUNT} -gt 0 ]]
 then
-  NET_LIST=${NETWORK_TYPE[External]}
-  for NET_TYPE in InternalAPI Tenant Storage StorageMgmt FloatingIP
+  NET_LIST=''
+  for NETWORK in ${NETWORK_CONNECTIONS[controller]}
   do
-    if [[ -z "$(echo ${NET_LIST} | grep ${NETWORK_TYPE[${NET_TYPE}]})" ]]
-    then
-      NET_LIST="${NET_LIST} ${NETWORK_TYPE[${NET_TYPE}]}"
-    fi
+    NET_LIST="${NET_LIST} --network network:${NETWORK}"
   done
-  NETWORK_CONNECTIONS="--network network:provisioning"
-  for NETWORK in ${NET_LIST}
-  do
-    NETWORK_CONNECTIONS="${NETWORK_CONNECTIONS} --network network:${NETWORK}"
-  done
-
-  if [[ ! -z "${NETWORK_TYPE[controller]}" ]]
-  then
-    for NETWORK in ${NETWORK_TYPE[controller]}
-    do
-      NETWORK_CONNECTIONS="${NETWORK_CONNECTIONS} --network network:${NETWORK}"
-    done
-  fi
 
   for X in $(seq 1 ${CONTROLLER_COUNT})
   do
@@ -684,7 +569,7 @@ then
     do
       DISKS="${DISKS} --disk path=${LIBVIRT_IMAGE_DIR}/overcloud-controller${X}-${Y}-${DATE}.qcow2,device=disk,bus=virtio,format=qcow2"
     done
-    ${SUDO} virt-install --ram ${CONTROLLER_RAM} --vcpus ${CONTROLLER_VCPU} --os-variant rhel7 ${DISKS} --noautoconsole --vnc ${NETWORK_CONNECTIONS} --name overcloud-controller${X}-${DATE} --dry-run --print-xml > /tmp/overcloud-controller${X}-${DATE}.xml
+    ${SUDO} virt-install --ram ${CONTROLLER_RAM} --vcpus ${CONTROLLER_VCPU} --os-variant rhel7 ${DISKS} --noautoconsole --vnc ${NET_LIST} --name overcloud-controller${X}-${DATE} --dry-run --print-xml > /tmp/overcloud-controller${X}-${DATE}.xml
     ${SUDO} virsh define --file /tmp/overcloud-controller${X}-${DATE}.xml
   done
 fi
@@ -692,26 +577,10 @@ fi
 if [[ ${COMPUTE_COUNT} -gt 0 ]]
 then
   NET_LIST=''
-  for NET_TYPE in InternalAPI Tenant Storage 
+  for NETWORK in ${NETWORK_CONNECTIONS[compute]}
   do
-    if [[ -z "$(echo ${NET_LIST} | grep ${NETWORK_TYPE[${NET_TYPE}]})" ]]
-    then
-      NET_LIST="${NET_LIST} ${NETWORK_TYPE[${NET_TYPE}]}"
-    fi
+    NET_LIST="${NET_LIST} --network network:${NETWORK}"
   done
-  NETWORK_CONNECTIONS="--network network:provisioning"
-  for NETWORK in ${NET_LIST}
-  do
-    NETWORK_CONNECTIONS="${NETWORK_CONNECTIONS} --network network:${NETWORK}"
-  done
-
-  if [[ ! -z "${NETWORK_TYPE[compute]}" ]]
-  then
-    for NETWORK in ${NETWORK_TYPE[compute]}
-    do
-      NETWORK_CONNECTIONS="${NETWORK_CONNECTIONS} --network network:${NETWORK}"
-    done
-  fi
 
   for X in $(seq 1 ${COMPUTE_COUNT})
   do
@@ -720,7 +589,7 @@ then
     do
       DISKS="${DISKS} --disk path=${LIBVIRT_IMAGE_DIR}/overcloud-compute${X}-${Y}-${DATE}.qcow2,device=disk,bus=virtio,format=qcow2"
     done
-    ${SUDO} virt-install --ram ${COMPUTE_RAM} --vcpus ${COMPUTE_VCPU} --os-variant rhel7 ${DISKS} --noautoconsole --vnc ${NETWORK_CONNECTIONS} --name overcloud-compute${X}-${DATE} --dry-run --print-xml > /tmp/overcloud-compute${X}-${DATE}.xml
+    ${SUDO} virt-install --ram ${COMPUTE_RAM} --vcpus ${COMPUTE_VCPU} --os-variant rhel7 ${DISKS} --noautoconsole --vnc ${NET_LIST} --name overcloud-compute${X}-${DATE} --dry-run --print-xml > /tmp/overcloud-compute${X}-${DATE}.xml
     ${SUDO} virsh define --file /tmp/overcloud-compute${X}-${DATE}.xml
   done
 fi
@@ -728,26 +597,10 @@ fi
 if [[ ${CEPH_COUNT} -gt 0 ]]
 then
   NET_LIST=''
-  for NET_TYPE in InternalAPI Storage StorageMgmt
+  for NETWORK in ${NETWORK_CONNECTIONS[ceph]}
   do
-    if [[ -z "$(echo ${NET_LIST} | grep ${NETWORK_TYPE[${NET_TYPE}]})" ]]
-    then
-      NET_LIST="${NET_LIST} ${NETWORK_TYPE[${NET_TYPE}]}"
-    fi
+    NET_LIST="${NET_LIST} --network network:${NETWORK}"
   done
-  NETWORK_CONNECTIONS="--network network:provisioning"
-  for NETWORK in ${NET_LIST}
-  do
-    NETWORK_CONNECTIONS="${NETWORK_CONNECTIONS} --network network:${NETWORK}"
-  done
-
-  if [[ ! -z "${NETWORK_TYPE[ceph]}" ]]
-  then
-    for NETWORK in ${NETWORK_TYPE[ceph]}
-    do
-      NETWORK_CONNECTIONS="${NETWORK_CONNECTIONS} --network network:${NETWORK}"
-    done
-  fi
 
   for X in $(seq 1 ${CEPH_COUNT})
   do
@@ -760,19 +613,19 @@ then
     do
       DISKS="${DISKS} --disk path=${LIBVIRT_IMAGE_DIR}/overcloud-ceph${X}-osd${Y}-${DATE}.qcow2,device=disk,bus=virtio,format=qcow2"
     done
-    ${SUDO} virt-install --ram ${CEPH_RAM} --vcpus ${CEPH_VCPU} --os-variant rhel7 ${DISKS} --noautoconsole --vnc ${NETWORK_CONNECTIONS} --name overcloud-ceph${X}-${DATE} --dry-run --print-xml > /tmp/overcloud-ceph${X}-${DATE}.xml
+    ${SUDO} virt-install --ram ${CEPH_RAM} --vcpus ${CEPH_VCPU} --os-variant rhel7 ${DISKS} --noautoconsole --vnc ${NET_LIST} --name overcloud-ceph${X}-${DATE} --dry-run --print-xml > /tmp/overcloud-ceph${X}-${DATE}.xml
     ${SUDO} virsh define --file /tmp/overcloud-ceph${X}-${DATE}.xml
   done
 fi
 
-source ${DIRECTOR_TOOLS}/config/undercloud.env
+source ${DIRECTOR_TOOLS}/environment/undercloud.env
 KVM_IP=${UNDERCLOUD_GATEWAY}
 
-cat /dev/null > ${DIRECTOR_TOOLS}/config/overcloud-servers.txt
+cat /dev/null > ${DIRECTOR_TOOLS}/run/overcloud-servers.txt
 for VM in $(${SUDO} virsh list --all | grep overcloud.*${DATE} | awk '{print $2}')
 do
-  MAC=$(${SUDO} virsh domiflist ${VM} | awk '/provisioning/ {print $5}');
-  echo "${VM}|${KVM_IP}|${MAC}|${LIBVIRT_USER}" >>${DIRECTOR_TOOLS}/config/overcloud-servers.txt
+  MAC=$(${SUDO} virsh domiflist ${VM} | awk '/provisioning/ {print $5}' | head -1);
+  echo "${VM}|${KVM_IP}|${MAC}|${LIBVIRT_USER}" >>${DIRECTOR_TOOLS}/run/overcloud-servers.txt
 done
 
 stdout ""

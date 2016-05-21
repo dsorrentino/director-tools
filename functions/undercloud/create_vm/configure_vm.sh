@@ -1,6 +1,9 @@
 #!/bin/bash
 
-SCRIPT_NAME=config_undercloud_vm
+source ${DIRECTOR_TOOLS}/environment/undercloud.env
+source ${DIRECTOR_TOOLS}/functions/common.sh
+
+SCRIPT_NAME=create_vm-configure
 
 LOG=${DIRECTOR_TOOLS}/logs/${SCRIPT_NAME}.log
 
@@ -9,8 +12,6 @@ stdout "${SCRIPT_NAME} start"
 stdout ""
 stdout "Gathering relevant information to install the undercloud."
 stdout ""
-
-source ${DIRECTOR_TOOLS}/config/undercloud.env
 
 stdout "Need some basic information around the server to where the Undercloud will be installed."
    
@@ -29,8 +30,8 @@ do
   fi
 done
 
-stdout "Storing password in ${DIRECTOR_TOOLS}/config/undercloud.env"
-sed -i "s/^UNDERCLOUD_ROOT_PW=.*$/UNDERCLOUD_ROOT_PW=${USER_INPUT}/" ${DIRECTOR_TOOLS}/config/undercloud.env
+stdout "Storing password in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+sed -i "s/^UNDERCLOUD_ROOT_PW=.*$/UNDERCLOUD_ROOT_PW=${USER_INPUT}/" ${DIRECTOR_TOOLS}/environment/undercloud.env
 echo ""
 
 USER_INPUT=''
@@ -43,8 +44,8 @@ do
   fi
 done
 
-stdout "Storing user in ${DIRECTOR_TOOLS}/config/undercloud.env"
-sed -i "s/^UNDERCLOUD_USER=.*$/UNDERCLOUD_USER=${USER_INPUT}/" ${DIRECTOR_TOOLS}/config/undercloud.env
+stdout "Storing user in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+sed -i "s/^UNDERCLOUD_USER=.*$/UNDERCLOUD_USER=${USER_INPUT}/" ${DIRECTOR_TOOLS}/environment/undercloud.env
 echo ""
 
 USER_INPUT=''
@@ -62,8 +63,8 @@ do
   fi
 done
 
-stdout "Storing user password in ${DIRECTOR_TOOLS}/config/undercloud.env"
-sed -i "s/^UNDERCLOUD_USER_PW=.*$/UNDERCLOUD_USER_PW=${USER_INPUT}/" ${DIRECTOR_TOOLS}/config/undercloud.env
+stdout "Storing user password in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+sed -i "s/^UNDERCLOUD_USER_PW=.*$/UNDERCLOUD_USER_PW=${USER_INPUT}/" ${DIRECTOR_TOOLS}/environment/undercloud.env
 echo ""
 
 USER_INPUT=''
@@ -76,55 +77,9 @@ do
   fi
 done
 
-stdout "Storing FQDN in ${DIRECTOR_TOOLS}/config/undercloud.env"
-sed -i "s/^UNDERCLOUD_FQDN=.*$/UNDERCLOUD_FQDN=${USER_INPUT}/" ${DIRECTOR_TOOLS}/config/undercloud.env
+stdout "Storing FQDN in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+sed -i "s/^UNDERCLOUD_FQDN=.*$/UNDERCLOUD_FQDN=${USER_INPUT}/" ${DIRECTOR_TOOLS}/environment/undercloud.env
 echo ""
-
-USER_DATA=''
-while [[ -z "${USER_DATA}" ]]
-do
-  read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Should this script create the Undercloud VM [Y/n]? " USER_DATA
-  if [[ -z "${USER_DATA}" ]]
-  then
-    USER_DATA=Y
-  fi
-  USER_DATA=$(echo ${USER_DATA} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(Y|N)')
-  if [[ -z "${USER_DATA}" ]]
-  then
-    stdout "Invalid entry. Try again."
-  fi
-done
-
-sed -i "s/^UNDERCLOUD_CREATE_VM=.*$/UNDERCLOUD_CREATE_VM=${USER_DATA}/" ${DIRECTOR_TOOLS}/config/undercloud.env
-echo ""
-
-if [[ "${UNDERCLOUD_CREATE_VM}" == "Y" ]]
-then
-  stdout "Base configuration data gathered to create the VM."
-else
-  stdout "Since the VM already exists, we will need connection information."
-  USER_INPUT=''
-  while [[ -z "${USER_INPUT}" ]]
-  do
-    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] What is the IP address of the system to install the Undercloud on: " USER_INPUT
-    ping -c 1 ${USER_INPUT} >/dev/null 2>&1
-    if [[ $? -ne 0 ]]
-    then
-      stderr "Can not ping ${USER_INPUT}.  Try again."
-      USER_INPUT=''
-    fi
-  done
-  UNDERCLOUD_IP=${USER_DATA}
-
-  stdout "Copying SSH key to root@${UNDERCLOUD_IP}. Enter credentials as needed."
-
-  ssh-copy-id root@${UNDERCLOUD_IP}
-
-  OS_HOSTNAME=$(ssh root@{UNDERCLOUD_IP} 'hostname')
-
-  stdout "Current hostname: ${OS_HOSTNAME}"
-  
-fi
 
 stdout ""
 stdout "If this undercloud VM will be deploying to Virtual Overcloud nodes on the same KVM host,"
@@ -153,8 +108,8 @@ then
   done
 
   LIBVIRT_USER=${USER_INPUT}
-  stdout "Storing user in ${DIRECTOR_TOOLS}/config/undercloud.env"
-  sed -i "s|^LIBVIRT_USER=.*$|LIBVIRT_USER=${LIBVIRT_USER}|" ${DIRECTOR_TOOLS}/config/undercloud.env
+  stdout "Storing user in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^LIBVIRT_USER=.*$|LIBVIRT_USER=${LIBVIRT_USER}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
   echo ""
 
   USER_INPUT=''
@@ -168,8 +123,8 @@ then
   done
 
   LIBVIRT_USER_PW=${USER_INPUT}
-  stdout "Storing user in ${DIRECTOR_TOOLS}/config/undercloud.env"
-  sed -i "s|^LIBVIRT_USER_PW=.*$|LIBVIRT_USER_PW=${LIBVIRT_USER_PW}|" ${DIRECTOR_TOOLS}/config/undercloud.env
+  stdout "Storing user in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^LIBVIRT_USER_PW=.*$|LIBVIRT_USER_PW=${LIBVIRT_USER_PW}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
 
   if [[ -z "$(grep ${LIBVIRT_USER} /etc/passwd)" ]]
   then

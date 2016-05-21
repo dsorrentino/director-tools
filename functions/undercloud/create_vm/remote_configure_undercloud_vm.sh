@@ -1,10 +1,10 @@
 #!/bin/bash
 
-SCRIPT_NAME=remote_configure_undercloud_vm
+SCRIPT_NAME=create_vm-remote_configure
 LOG=${SCRIPT_NAME}.log
 
-source undercloud.env
-source common.sh
+source ~/undercloud.env
+source ~/common.sh
 
 if [[ -z "${UNDERCLOUD_IP}" ]]
 then

@@ -1,5 +1,7 @@
 #!/bin/sh
 
+source ${DIRECTOR_TOOLS}/functions/common.sh
+
 SCRIPT_NAME="configure_kvm"
 
 LOG=${DIRECTOR_TOOLS}/logs/${SCRIPT_NAME}.log

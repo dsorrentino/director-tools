@@ -1,19 +1,25 @@
 #!/bin/bash
 
-source config/director-tools.env
+source environment/director-tools.env
+source ${DIRECTOR_TOOLS}/functions/common.sh
+source ${DIRECTOR_TOOLS}/environment/undercloud.env
 
 LOG=${DIRECTOR_TOOLS}/logs/$(date +'%Y%m%d-%H%M')-undercloud_configure.log
 
-source ${DIRECTOR_TOOLS}/functions/common.sh
-
-source ${DIRECTOR_TOOLS}/config/undercloud.env
 
 stdout ""
 stdout "This script will gather the data for the undercloud deployment and install all"
 stdout "necessary packages to do the undercloud install."
 stdout ""
 
-source  ${DIRECTOR_TOOLS}/functions/undercloud/configure.sh
+rm -f ${DIRECTOR_TOOLS}/logs/*undercloud_configure*log*
+${DIRECTOR_TOOLS}/functions/undercloud/configure.sh
+
+if [[ ! -z "$(ls ${DIRECTOR_TOOLS}/logs/*undercloud_configure*err*)" ]]
+then
+  stderr "There was an error configuring the undercloud."
+  exit 300
+fi
 
 kvm_snapshot undercloud configure_undercloud_complete
 

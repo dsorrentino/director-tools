@@ -1,9 +1,9 @@
 #!/bin/bash
 
-SCRIPT_NAME=remote_configure_undercloud-1
+SCRIPT_NAME=remote_undercloud_configure-1
 
-source undercloud.env
-source common.sh
+source ~/undercloud.env
+source ~/common.sh
 
 LOG="${SCRIPT_NAME}.log"
 

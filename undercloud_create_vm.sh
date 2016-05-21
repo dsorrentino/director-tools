@@ -1,26 +1,21 @@
 #!/bin/bash
 
-source config/director-tools.env
-
-LOG=${DIRECTOR_TOOLS}/logs/$(date +'%Y%m%d-%H%M')-undercloud_prepare.log
-
+source environment/director-tools.env
 source ${DIRECTOR_TOOLS}/functions/common.sh
+chmod 600 ${DIRECTOR_TOOLS}/environment/undercloud.env
 
-chmod 600 ${DIRECTOR_TOOLS}/config/undercloud.env
+LOG=${DIRECTOR_TOOLS}/logs/$(date +'%Y%m%d-%H%M')-undercloud_create_vm.log
 
 stdout "This script will gather the data for the undercloud virtual machine."
-stdout "This VM could exist or not.  The script has the capability to create"
-stdout "The VM if needed."
+stdout ""
+stdout "The expection is that the VM does not exist and this script will create it."
 
-source ${DIRECTOR_TOOLS}/functions/config/undercloud_vm.sh
+${DIRECTOR_TOOLS}/functions/undercloud/create_vm/configure_vm.sh
 
-source ${DIRECTOR_TOOLS}/config/undercloud.env
+source ${DIRECTOR_TOOLS}/environment/undercloud.env
 
-if [[ "${UNDERCLOUD_CREATE_VM}" == 'Y' ]]
-then
-  source ${DIRECTOR_TOOLS}/functions/kvm/configure_kvm.sh
-  source ${DIRECTOR_TOOLS}/functions/kvm/create_undercloud_vm.sh
-fi
+${DIRECTOR_TOOLS}/functions/kvm/configure_kvm.sh
+${DIRECTOR_TOOLS}/functions/undercloud/create_vm/create_vm.sh
 
 if [[ -z "$(grep undercloud /etc/hosts)" ]]
 then
