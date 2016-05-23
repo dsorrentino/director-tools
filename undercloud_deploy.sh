@@ -11,13 +11,18 @@ stdout "This script will execute the undercloud deployment and copy all output l
 stdout "back to ${DIRECTOR_TOOLS}/logs"
 stdout ""
 
-ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'openstack undercloud install | tee -a undercloud_install.log'
+scp ${DIRECTOR_TOOLS}/functions/common.sh ${DIRECTOR_TOOLS}/functions/undercloud/remote_undercloud_deploy.sh ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:~
 
-rm -f ${DIRECTOR_TOOLS}/logs/undercloud_install.log*
+ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'chmod 775 ~/common.sh ~/remote_undercloud_deploy.sh'
+ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} '~/remote_undercloud_deploy.sh'
 
-scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:undercloud_install.log* ${DIRECTOR_TOOLS}/logs
+rm -f ${DIRECTOR_TOOLS}/logs/remote_undercloud_deploy*log*
 
-if [[ -z "$(ls ${DIRECTOR_TOOLS}/logs/undercloud_install.*err 2>/dev/null)" ]]
+scp ${UNDERCLOUD_USER}@${UNDERCLOUD_IP}:remote_undercloud_deploy*log* ${DIRECTOR_TOOLS}/logs
+
+ssh -t ${UNDERCLOUD_USER}@${UNDERCLOUD_IP} 'rm ~/common.sh ~/remote_undercloud_deploy*'
+
+if [[ -z "$(ls ${DIRECTOR_TOOLS}/logs/remote_undercloud_deploy*log*err 2>/dev/null)" ]]
 then
   stdout "Undercloud installation completed successfully."
   stdout "Copying templates into ${UNDERCLOUD_USER}/templates."
@@ -26,8 +31,6 @@ then
 else
   stderr "There appears to have been a problem witht he deployment."
 fi
-
-
 
 stdout "At this point you should be ready to prepare your overcloud."
 stdout ""
