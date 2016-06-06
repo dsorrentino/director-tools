@@ -248,6 +248,28 @@ do
   fi
 done
 
+declare -A NETWORK_TYPE
+
+stdout "For each network, flag the network as either [E]xternal or [I]nternal.  Floating IP networks are considered [E]xternal."
+stdout ""
+
+for NETWORK in $(echo ${NETWORK_LIST} | sed 's/,/ /g')
+do
+  USER_INPUT=''
+  while [[ -z "${USER_INPUT}" ]]
+  do
+    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Is network '${NETWORK}' [E]xternal or [I]nternal: " USER_INPUT
+    USER_INPUT=$(echo ${USER_INPUT} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(E|I)')
+  done
+  if [[ "${USER_INPUT}" == "E" ]]
+  then
+    NETWORK_TYPE[${NETWORK}]="External"
+  else
+    NETWORK_TYPE[${NETWORK}]="Internal"
+  fi
+done
+
+
 stdout ""
 stdout "Creating networks."
 stdout ""
@@ -265,7 +287,7 @@ do
     IP_ADDRESS=$(echo ${IP_ADDRESS} | awk -F\. '{print $1"."$2"."$3".1"}')
   fi
 
-if [[ "${NETWORK}" == "${NETWORK_TYPE[External]}" || "${NETWORK}" == "${NETWORK_TYPE[FloatingIP]}" ]]
+if [[ "${NETWORK_TYPE[${NETWORK}]}" == "External" ]]
 then
 cat > /tmp/${NETWORK}.xml <<EOF
 <network>
