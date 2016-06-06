@@ -34,6 +34,3 @@ fi
 
 stdout "At this point you should be ready to prepare your overcloud."
 stdout ""
-stdout "When you're ready, execute the overcloud_prepare.sh script"
-stdout "to continue."
-stdout ""

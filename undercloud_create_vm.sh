@@ -16,6 +16,7 @@ source ${DIRECTOR_TOOLS}/environment/undercloud.env
 
 ${DIRECTOR_TOOLS}/functions/kvm/configure_kvm.sh
 ${DIRECTOR_TOOLS}/functions/undercloud/create_vm/create_vm.sh
+source ${DIRECTOR_TOOLS}/environment/undercloud.env
 
 if [[ -z "$(grep undercloud /etc/hosts)" ]]
 then

@@ -26,143 +26,159 @@ then
   fi
 fi
 
-INF_NET=infrastructure-net
-
-if [[ ! -z "$(${SUDO} virsh net-info ${INF_NET} 2>/dev/null)" ]]
-then
-  X=1
-  while [[ ! -z "$(${SUDO} virsh net-info ${INF_NET}-${X} 2>/dev/null)" ]]
-  do
-    X=$(( ${X} + 1 ))
-  done
-  INF_NET="${INF_NET}-${X}"
-fi
-
-INF_SUBNET=''
-INF_PREFIX=''
 USER_INPUT=''
-stdout ""
+
 while [[ -z "${USER_INPUT}" ]]
 do
-  read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] [A]utoselect infrastructure CIDR in the 192.168.100-192.168.255 range or set [m]anually [A/m]? " USER_INPUT
+  read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Create networks for the Director VM [Y/n]? " USER_INPUT
   if [[ -z "${USER_INPUT}" ]]
   then
-    USER_INPUT='A'
+    USER_INPUT=Y
   fi
-  USER_INPUT=$(echo ${USER_INPUT} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(A|M)')
+  USER_INPUT=$(echo ${USER_INPUT} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(Y|n)')
 done
 
-if [[ "${USER_INPUT}" == 'A' ]]
+VM_NETWORK_CONFIG=''
+
+if [[ "${USER_INPUT}" == 'Y' ]]
 then
-  INF_PREFIX='24'
-  INF_SUBNET=100
-  UNDERCLOUD_IP=254
-  UNDERCLOUD_INFRASTRUCTURE_DHCP_START=2
-  UNDERCLOUD_INFRASTRUCTURE_DHCP_END=253
+  INF_NET=infrastructure-net
 
-  while [[ ! -z "$(ip a | grep inet | grep 192.168.${INF_SUBNET})" ]]
-  do
-    INF_SUBNET=$(( ${INF_SUBNET} + 1 ))
-    if [[ ${INF_SUBNET} -eq 255 ]]
-    then
-      stderr "Unable to find an external network range between 192.168.100.X-192.168.255.X."
-      exit 255
-    fi
-  done
-  UNDERCLOUD_IP=192.168.${INF_SUBNET}.${UNDERCLOUD_IP}
-  UNDERCLOUD_INFRASTRUCTURE_DHCP_START=192.168.${INF_SUBNET}.${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}
-  UNDERCLOUD_INFRASTRUCTURE_DHCP_END=192.168.${INF_SUBNET}.${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}
-  INF_SUBNET=192.168.${INF_SUBNET}.1
-else
+  if [[ ! -z "$(${SUDO} virsh net-info ${INF_NET} 2>/dev/null)" ]]
+  then
+    X=1
+    while [[ ! -z "$(${SUDO} virsh net-info ${INF_NET}-${X} 2>/dev/null)" ]]
+    do
+      X=$(( ${X} + 1 ))
+    done
+    INF_NET="${INF_NET}-${X}"
+  fi
+
+  INF_SUBNET=''
+  INF_PREFIX=''
   USER_INPUT=''
+  stdout ""
   while [[ -z "${USER_INPUT}" ]]
   do
-    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Enter the CIDR for the infrastructure network [${UNDERCLOUD_INFRASTRUCTURE_NETWORK}]: " USER_INPUT
+    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] [A]utoselect infrastructure CIDR in the 192.168.100-192.168.255 range or set [m]anually [A/m]? " USER_INPUT
     if [[ -z "${USER_INPUT}" ]]
     then
-      USER_INPUT=${UNDERCLOUD_INFRASTRUCTURE_NETWORK}
+      USER_INPUT='A'
     fi
-    #  Very rudimentary CIDR pattern matching
-    USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\/[0-9]{1,3}')
-    if [[ ! -z "${USER_INPUT}" ]]
-    then
-      INF_SUBNET=$(echo ${USER_INPUT} | awk -F\. '{print $1"."$2"."$3}')
-      if [[ ! -z "$(ip a | grep inet | grep ${INF_SUBNET})" ]]
+    USER_INPUT=$(echo ${USER_INPUT} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(A|M)')
+  done
+
+  if [[ "${USER_INPUT}" == 'A' ]]
+  then
+    INF_PREFIX='24'
+    INF_SUBNET=100
+    UNDERCLOUD_IP=254
+    UNDERCLOUD_INFRASTRUCTURE_DHCP_START=2
+    UNDERCLOUD_INFRASTRUCTURE_DHCP_END=253
+
+    while [[ ! -z "$(ip a | grep inet | grep 192.168.${INF_SUBNET})" ]]
+    do
+      INF_SUBNET=$(( ${INF_SUBNET} + 1 ))
+      if [[ ${INF_SUBNET} -eq 255 ]]
       then
-        stdout "It looks like ${INF_SUBNET} may already on an interface:"
-        stdout ""
-        ip a | grep -A2 -B2 ${INF_SUBNET}
-        stdout ""
-        USER_INPUT_2=''
-        read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Use ${USER_INPUT} as the ${INF_NET} network anyway [y/N] " USER_INPUT_2
-        USER_INPUT_2=$(echo ${USER_INPUT_2} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(Y|N)')
-        if [[ -z "${USER_INPUT_2}" || "${USER_INPUT_2}" -eq 'N' ]]
-        then
-          USER_INPUT=''
-        fi
+        stderr "Unable to find an external network range between 192.168.100.X-192.168.255.X."
+        exit 255
       fi
-    else
-      stdout ""
-      stdout "Invalid CIDR of '${USER_INPUT}' entered.  Example: 192.168.100.0/24"
-      stdout ""
-    fi
-  done
-  UNDERCLOUD_INFRASTRUCTURE_NETWORK=${USER_INPUT}
-  INF_SUBNET=$(echo ${UNDERCLOUD_INFRASTRUCTURE_NETWORK} | awk -F/ '{print $1}' | awk -F\. '{print $NF}')
-  INF_SUBNET=$(( ${INF_SUBNET} + 1 ))
-  INF_SUBNET=$(echo ${UNDERCLOUD_INFRASTRUCTURE_NETWORK} | awk -F/ '{print $1}' | awk -F\. '{print $1"."$2"."$3}').${INF_SUBNET}
-  INF_PREFIX=$(echo ${UNDERCLOUD_INFRASTRUCTURE_NETWORK} | awk -F/ '{print $NF}')
-  USER_INPUT=''
-  while [[ -z "${USER_INPUT}" ]]
-  do
-    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Enter the IP for the Director VM on the infrastructure network [${UNDERCLOUD_IP}]: " USER_INPUT
-    if [[ -z "${USER_INPUT}" ]]
-    then
-      USER_INPUT=${UNDERCLOUD_IP}
-    fi
-    #  Very rudimentary CIDR pattern matching
-    USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
-  done
-  UNDERCLOUD_IP=${USER_INPUT}
-  stdout ""
-  stdout "DHCP is enabled for the first boot of the VM on the infrastructure network so you must"
-  stdout "define a DHCP range for KVM to pull from for the first boot of the undercloud VM"
-  stdout ""
-  USER_INPUT=''
-  while [[ -z "${USER_INPUT}" ]]
-  do
-    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] DHCP start IP [${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}]: " USER_INPUT
-    if [[ -z "${USER_INPUT}" ]]
-    then
-      USER_INPUT=${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}
-    fi
-    USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
-  done
-  UNDERCLOUD_INFRASTRUCTURE_DHCP_START=${USER_INPUT}
-
-  stdout ""
-  USER_INPUT=''
-  while [[ -z "${USER_INPUT}" ]]
-  do
-    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] DHCP end IP [${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}]: " USER_INPUT
-    if [[ -z "${USER_INPUT}" ]]
-    then
-      USER_INPUT=${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}
-    fi
-    USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
-  done
-  UNDERCLOUD_INFRASTRUCTURE_DHCP_END=${USER_INPUT}
+    done
+    UNDERCLOUD_IP=192.168.${INF_SUBNET}.${UNDERCLOUD_IP}
+    UNDERCLOUD_INFRASTRUCTURE_DHCP_START=192.168.${INF_SUBNET}.${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}
+    UNDERCLOUD_INFRASTRUCTURE_DHCP_END=192.168.${INF_SUBNET}.${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}
+    INF_SUBNET=192.168.${INF_SUBNET}.1
+  else
+    USER_INPUT=''
+    while [[ -z "${USER_INPUT}" ]]
+    do
+      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Enter the CIDR for the infrastructure network [${UNDERCLOUD_INFRASTRUCTURE_NETWORK}]: " USER_INPUT
+      if [[ -z "${USER_INPUT}" ]]
+      then
+        USER_INPUT=${UNDERCLOUD_INFRASTRUCTURE_NETWORK}
+      fi
+      #  Very rudimentary CIDR pattern matching
+      USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\/[0-9]{1,3}')
+      if [[ ! -z "${USER_INPUT}" ]]
+      then
+        INF_SUBNET=$(echo ${USER_INPUT} | awk -F\. '{print $1"."$2"."$3}')
+        if [[ ! -z "$(ip a | grep inet | grep ${INF_SUBNET})" ]]
+        then
+          stdout "It looks like ${INF_SUBNET} may already on an interface:"
+          stdout ""
+          ip a | grep -A2 -B2 ${INF_SUBNET}
+          stdout ""
+          USER_INPUT_2=''
+          read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Use ${USER_INPUT} as the ${INF_NET} network anyway [y/N] " USER_INPUT_2
+          USER_INPUT_2=$(echo ${USER_INPUT_2} | cut -c1 | tr '[:lower:]' '[:upper:]' | egrep '(Y|N)')
+          if [[ -z "${USER_INPUT_2}" || "${USER_INPUT_2}" -eq 'N' ]]
+          then
+            USER_INPUT=''
+          fi
+        fi
+      else
+        stdout ""
+        stdout "Invalid CIDR of '${USER_INPUT}' entered.  Example: 192.168.100.0/24"
+        stdout ""
+      fi
+    done
+    UNDERCLOUD_INFRASTRUCTURE_NETWORK=${USER_INPUT}
+    INF_SUBNET=$(echo ${UNDERCLOUD_INFRASTRUCTURE_NETWORK} | awk -F/ '{print $1}' | awk -F\. '{print $NF}')
+    INF_SUBNET=$(( ${INF_SUBNET} + 1 ))
+    INF_SUBNET=$(echo ${UNDERCLOUD_INFRASTRUCTURE_NETWORK} | awk -F/ '{print $1}' | awk -F\. '{print $1"."$2"."$3}').${INF_SUBNET}
+    INF_PREFIX=$(echo ${UNDERCLOUD_INFRASTRUCTURE_NETWORK} | awk -F/ '{print $NF}')
+    USER_INPUT=''
+    while [[ -z "${USER_INPUT}" ]]
+    do
+      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Enter the IP for the Director VM on the infrastructure network [${UNDERCLOUD_IP}]: " USER_INPUT
+      if [[ -z "${USER_INPUT}" ]]
+      then
+        USER_INPUT=${UNDERCLOUD_IP}
+      fi
+      #  Very rudimentary CIDR pattern matching
+      USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+    done
+    UNDERCLOUD_IP=${USER_INPUT}
+    stdout ""
+    stdout "DHCP is enabled for the first boot of the VM on the infrastructure network so you must"
+    stdout "define a DHCP range for KVM to pull from for the first boot of the undercloud VM"
+    stdout ""
+    USER_INPUT=''
+    while [[ -z "${USER_INPUT}" ]]
+    do
+      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] DHCP start IP [${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}]: " USER_INPUT
+      if [[ -z "${USER_INPUT}" ]]
+      then
+        USER_INPUT=${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}
+      fi
+      USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+    done
+    UNDERCLOUD_INFRASTRUCTURE_DHCP_START=${USER_INPUT}
   
-fi
-
-INF_NETMASK=$(cidr2mask ${INF_PREFIX})
-
-echo ""
-stdout "Creating infrastructure network '${INF_NET}' with CIDR '${INF_SUBNET}/${INF_PREFIX}'"
-
-INF_NET_DHCP="<range start='${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}' end='${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}'/>"
-
-cat > /tmp/${INF_NET}.xml <<EOF
+    stdout ""
+    USER_INPUT=''
+    while [[ -z "${USER_INPUT}" ]]
+    do
+      read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] DHCP end IP [${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}]: " USER_INPUT
+      if [[ -z "${USER_INPUT}" ]]
+      then
+        USER_INPUT=${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}
+      fi
+      USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+    done
+    UNDERCLOUD_INFRASTRUCTURE_DHCP_END=${USER_INPUT}
+    
+  fi
+  
+  INF_NETMASK=$(cidr2mask ${INF_PREFIX})
+  
+  echo ""
+  stdout "Creating infrastructure network '${INF_NET}' with CIDR '${INF_SUBNET}/${INF_PREFIX}'"
+  
+  INF_NET_DHCP="<range start='${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}' end='${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}'/>"
+  
+  cat > /tmp/${INF_NET}.xml <<EOF
 <network>
   <name>${INF_NET}</name>
   <forward mode='nat'>
@@ -177,77 +193,209 @@ cat > /tmp/${INF_NET}.xml <<EOF
   </ip>
 </network>
 EOF
-
-stdout "$(${SUDO} virsh net-define /tmp/${INF_NET}.xml)"
-stdout "$(${SUDO} virsh net-autostart ${INF_NET})"
-stdout "$(${SUDO} virsh net-start ${INF_NET})"
-
-stdout "Storing infrastructure network in ${DIRECTOR_TOOLS}/environment/undercloud.env"
-sed -i "s|^UNDERCLOUD_INFRASTRUCTURE_NETWORK=.*$|UNDERCLOUD_INFRASTRUCTURE_NETWORK=${UNDERCLOUD_INFRASTRUCTURE_NETWORK}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
-
-stdout "Storing gateway in ${DIRECTOR_TOOLS}/environment/undercloud.env"
-sed -i "s|^UNDERCLOUD_GATEWAY=.*$|UNDERCLOUD_GATEWAY=${INF_SUBNET}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
-
-stdout "Storing IP in ${DIRECTOR_TOOLS}/environment/undercloud.env"
-sed -i "s|^UNDERCLOUD_IP=.*$|UNDERCLOUD_IP=${UNDERCLOUD_IP}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
-
-stdout "Storing DHCP start in ${DIRECTOR_TOOLS}/environment/undercloud.env"
-sed -i "s|^UNDERCLOUD_INFRASTRUCTURE_DHCP_START=.*$|UNDERCLOUD_INFRASTRUCTURE_DHCP_START=${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
-
-stdout "Storing DHCP end in ${DIRECTOR_TOOLS}/environment/undercloud.env"
-sed -i "s|^UNDERCLOUD_INFRASTRUCTURE_DHCP_END=.*$|UNDERCLOUD_INFRASTRUCTURE_DHCP_END=${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
-
-stdout ""
-
-if [[ ! -z "$(${SUDO} virsh net-list | grep provisioning)" ]]
-then
-  stdout "Provisioning network already exists.  Deleting it and re-creating it."
-  ${SUDO} virsh net-destroy provisioning
-  ${SUDO} virsh net-undefine provisioning
-fi
-
-USER_INPUT=''
-while [[ -z "${USER_INPUT}" ]]
-do
-  read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Provide the Network for the Provisioning network, example 172.16.100.0. Network should be at least a /24 [${UNDERCLOUD_PROVISIONING}]: " USER_INPUT
-  #  Very rudimentary CIDR pattern matching
-  if [[ -z "${USER_INPUT}" ]]
+  
+  stdout "$(${SUDO} virsh net-define /tmp/${INF_NET}.xml)"
+  stdout "$(${SUDO} virsh net-autostart ${INF_NET})"
+  stdout "$(${SUDO} virsh net-start ${INF_NET})"
+  
+  stdout "Storing infrastructure network in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^UNDERCLOUD_INFRASTRUCTURE_NETWORK=.*$|UNDERCLOUD_INFRASTRUCTURE_NETWORK=${UNDERCLOUD_INFRASTRUCTURE_NETWORK}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
+  
+  stdout "Storing gateway in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^UNDERCLOUD_GATEWAY=.*$|UNDERCLOUD_GATEWAY=${INF_SUBNET}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
+  
+  stdout "Storing IP in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^UNDERCLOUD_IP=.*$|UNDERCLOUD_IP=${UNDERCLOUD_IP}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
+  
+  stdout "Storing DHCP start in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^UNDERCLOUD_INFRASTRUCTURE_DHCP_START=.*$|UNDERCLOUD_INFRASTRUCTURE_DHCP_START=${UNDERCLOUD_INFRASTRUCTURE_DHCP_START}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
+  
+  stdout "Storing DHCP end in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^UNDERCLOUD_INFRASTRUCTURE_DHCP_END=.*$|UNDERCLOUD_INFRASTRUCTURE_DHCP_END=${UNDERCLOUD_INFRASTRUCTURE_DHCP_END}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
+  
+  stdout ""
+  
+  if [[ ! -z "$(${SUDO} virsh net-list | grep provisioning)" ]]
   then
-    USER_INPUT=${UNDERCLOUD_PROVISIONING}
+    stdout "Provisioning network already exists.  Deleting it and re-creating it."
+    ${SUDO} virsh net-destroy provisioning
+    ${SUDO} virsh net-undefine provisioning
   fi
-  USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\/[0-9]{1,3}')
-  if [[ ! -z "${USER_INPUT}" ]]
-  then
-    if [[ $(echo ${UNDERCLOUD_PROVISIONING} | awk -F/ '{print $NF}') -gt 24 ]]
+  
+  USER_INPUT=''
+  while [[ -z "${USER_INPUT}" ]]
+  do
+    read -p "[$(date +'%Y/%m/%d-%H:%M:%S')] Provide the Network for the Provisioning network, example 172.16.100.0. Network should be at least a /24 [${UNDERCLOUD_PROVISIONING}]: " USER_INPUT
+    #  Very rudimentary CIDR pattern matching
+    if [[ -z "${USER_INPUT}" ]]
     then
-      stdout "Warning:  Network should be at least a /24."
-      USER_INPUT=''
+      USER_INPUT=${UNDERCLOUD_PROVISIONING}
     fi
-  fi
-done
-
-UNDERCLOUD_PROVISIONING=${USER_INPUT}
-
-PROVISIONING_NETWORK=$(echo ${UNDERCLOUD_PROVISIONING} | awk -F/ '{print $1}')
-PROVISIONING_NETMASK=$(echo ${UNDERCLOUD_PROVISIONING} | awk -F/ '{print $NF}')
-PROVISIONING_NETMASK=$(cidr2mask ${PROVISIONING_NETMASK})
-
-stdout "Storing Provisioning IP in ${DIRECTOR_TOOLS}/environment/undercloud.env"
-sed -i "s|^UNDERCLOUD_PROVISIONING=.*$|UNDERCLOUD_PROVISIONING=${UNDERCLOUD_PROVISIONING}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
-echo ""
-
-cat > /tmp/provisioning.xml <<EOF
+    USER_INPUT=$(echo ${USER_INPUT} | egrep '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\/[0-9]{1,3}')
+    if [[ ! -z "${USER_INPUT}" ]]
+    then
+      if [[ $(echo ${UNDERCLOUD_PROVISIONING} | awk -F/ '{print $NF}') -gt 24 ]]
+      then
+        stdout "Warning:  Network should be at least a /24."
+        USER_INPUT=''
+      fi
+    fi
+  done
+  
+  UNDERCLOUD_PROVISIONING=${USER_INPUT}
+  
+  PROVISIONING_NETWORK=$(echo ${UNDERCLOUD_PROVISIONING} | awk -F/ '{print $1}')
+  PROVISIONING_NETMASK=$(echo ${UNDERCLOUD_PROVISIONING} | awk -F/ '{print $NF}')
+  PROVISIONING_NETMASK=$(cidr2mask ${PROVISIONING_NETMASK})
+  
+  stdout "Storing Provisioning IP in ${DIRECTOR_TOOLS}/environment/undercloud.env"
+  sed -i "s|^UNDERCLOUD_PROVISIONING=.*$|UNDERCLOUD_PROVISIONING=${UNDERCLOUD_PROVISIONING}|" ${DIRECTOR_TOOLS}/environment/undercloud.env
+  echo ""
+  
+  cat > /tmp/provisioning.xml <<EOF
 <network>
   <name>provisioning</name>
   <ip address="${PROVISIONING_NETWORK}" netmask="${PROVISIONING_NETMASK}"/>
 </network>
 EOF
 
-stdout "$(${SUDO} virsh net-define /tmp/provisioning.xml)"
-stdout "$(${SUDO} virsh net-autostart provisioning)"
-stdout "$(${SUDO} virsh net-start provisioning)"
+  stdout "$(${SUDO} virsh net-define /tmp/provisioning.xml)"
+  stdout "$(${SUDO} virsh net-autostart provisioning)"
+  stdout "$(${SUDO} virsh net-start provisioning)"
 
-stdout ""
+  VM_NETWORK_CONFIG="--network network:provisioning --network network:${INF_NET}"
+else
+  stdout "###########################################"
+  stdout "# BETA CODE - THIS CODE IS UNTESTED UNTIL #"
+  stdout "# I HAVE SOME REAL WORLD HARDWARE TO TEST #"
+  stdout "# ON                                      #"
+  stdout "###########################################"
+  which brctl >/dev/null 2>&1
+  if [[ $? -ne 0 ]]
+  then
+    stdout "Bridge utils not installed.  Installing them now."
+    ${SUDO} yum install bridge-utils -y
+  fi
+
+  CREATE_BRIDGE=N
+
+  if [[ -z "$(brctl show | egrep -v 'bridge name')" ]]
+  then
+    stdout "No bridges found."
+    CREATE_BRIDGE=N
+  else
+    stdout "Following bridge configuration found:"
+    stdout ""
+    brctl show
+    stdout ""
+    USER_INPUT=''
+    while [[ -z "${USER_INPUT}" ]]
+    do
+      read -p "Do you want to create new bridges for the undercloud VM [Y/n]? " USER_INPUT
+      if [[ -z "${USER_INPUT}" ]]
+      then
+        USER_INPUT=Y
+      fi
+      USER_INPUT=$(echo ${USER_INPUT} | tr '[:lower:]' '[:upper:]' | cut -c1 | egrep '(Y|N)')
+    done
+    CREATE_BRIDGES=${USER_INPUT}
+  fi
+
+  if [[ "${CREATE_BRIDGES}" == "Y" ]]
+  then
+    stdout "Creating a bridge for infrastructure network and provisioning."
+    ${SUDO} brctl addbr infr-br
+    ${SUDO} brctl addbr prov-br
+    for NETWORK in infrastructure provisioning
+    do
+      USER_INPUT=''
+      while [[ -z "${USER_INPUT}" ]]
+      do
+        stdout "Please select the interface you'd like to use for the ${NETWORK} bridge:"
+        stdout ""
+        ip link show | grep -B1 'link/ether' | grep -v 'link/ether' | awk '{print $1" "$2}' | sed 's/:$//g'
+        stdout ""
+        read -p "Select interface: " USER_INPUT
+        if [[ ! -z "${USER_INPUT}" ]]
+        then
+          USER_INPUT=$(ip link show | grep -B1 'link/ether' | grep -v 'link/ether' | awk '{print $1" "$2}' | sed 's/:$//g' | egrep "^${USER_INPUT}: " | awk '{print $2}')
+        fi
+      done
+      BRIDGE_NAME="$(echo ${NETWORK} | cut -c1-4)-br"
+      stdout "Adding interface ${USER_INPUT} to ${BRIDGE_NAME} bridge."
+      brctl addif ${BRIDGE_NAME} ${USER_INPUT}
+    done
+  fi
+
+  stdout ""
+  stdout "Which bridge should be used as the infrastructure network:"
+  stdout ""
+  BR_NDX=0
+  INF_NET=''
+  while [[ -z "${INF_NET}" ]]
+  do
+    for BRIDGE in $(brctl show | egrep -v 'bridge name' | awk '{print $1}' | sort -u)
+    do
+      BR_NDX=$(( ${BR_NDX} + 1 ))
+      echo "[${BR_NDX}] ${BRIDGE}"
+    done
+    USER_INPUT=''
+    read -p "Select the bridge to be used for the infrastructure network [1-${BR_NDX}]: " USER_INPUT
+    USER_INPUT=$(echo ${USER_INPUT} | egrep -o '[0-9][0-9]*')
+    if [[ ! -z "${USER_INPUT}" && ${USER_INPUT} ]]
+    then
+      if [[ ${USER_INPUT} -gt 0 && ${USER_INPUT} -le ${BR_NDX} ]]
+      then
+        for BRIDGE in $(brctl show | egrep -v 'bridge name' | awk '{print $1}' | sort -u)
+        do
+          BR_NDX=$(( ${BR_NDX} + 1 ))
+          if [[ ${BR_NDX} -eq ${USER_INPUT} ]]
+          then
+            INF_NET=${BRIDGE}
+          fi
+        done
+      fi
+    fi
+  done
+  stdout ""
+  stdout "Using bridge ${INF_NET} for the infrastructure network."
+  stdout ""
+  stdout "Which bridge should be used as the provisioning network:"
+  stdout ""
+  BR_NDX=0
+  PROV_NET=''
+  while [[ -z "${PROV_NET}" ]]
+  do
+    for BRIDGE in $(brctl show | egrep -v 'bridge name' | awk '{print $1}' | sort -u)
+    do
+      BR_NDX=$(( ${BR_NDX} + 1 ))
+      echo "[${BR_NDX}] ${BRIDGE}"
+    done
+    USER_INPUT=''
+    read -p "Select the bridge to be used for the provisioning network [1-${BR_NDX}]: " USER_INPUT
+    USER_INPUT=$(echo ${USER_INPUT} | egrep -o '[0-9][0-9]*')
+    if [[ ! -z "${USER_INPUT}" && ${USER_INPUT} ]]
+    then
+      if [[ ${USER_INPUT} -gt 0 && ${USER_INPUT} -le ${BR_NDX} ]]
+      then
+        for BRIDGE in $(brctl show | egrep -v 'bridge name' | awk '{print $1}' | sort -u)
+        do
+          BR_NDX=$(( ${BR_NDX} + 1 ))
+          if [[ ${BR_NDX} -eq ${USER_INPUT} ]]
+          then
+            PROV_NET=${BRIDGE}
+          fi
+        done
+      fi
+    fi
+  done
+  stdout ""
+  stdout "Using bridge ${PROV_NET} for the provisioning network."
+  stdout ""
+  VM_NETWORK_CONFIG="--network bridge:${PROV_NET} --network bridge:${INF_NET}"
+fi
+  
+  stdout ""
 stdout "Using base image from ${RHEL_KVM_IMAGE_SOURCE}"
 
 OUTPUT_IMAGE=$(mktemp)
@@ -353,7 +501,7 @@ stdout "$(${SUDO} virt-customize -a ${LIBVIRT_IMAGE_DIR}/${UNDERCLOUD_IMAGE} --r
 stdout "Setting up network interface files."
 stdout "$(${SUDO} virt-customize -a ${LIBVIRT_IMAGE_DIR}/${UNDERCLOUD_IMAGE} --run-command 'cp /etc/sysconfig/network-scripts/ifcfg-eth{0,1} && sed -i s/DEVICE=.*/DEVICE=eth1/g /etc/sysconfig/network-scripts/ifcfg-eth1')"
 stdout "Launching VM"
-stdout "$(${SUDO} virt-install --ram ${UNDERCLOUD_RAM} --vcpus ${UNDERCLOUD_VCPU} --os-variant rhel7 --disk path=${LIBVIRT_IMAGE_DIR}/${UNDERCLOUD_IMAGE},device=disk,bus=virtio,format=qcow2 --import --noautoconsole --vnc --network network:provisioning --network network:${INF_NET} --name undercloud)"
+stdout "$(${SUDO} virt-install --ram ${UNDERCLOUD_RAM} --vcpus ${UNDERCLOUD_VCPU} --os-variant rhel7 --disk path=${LIBVIRT_IMAGE_DIR}/${UNDERCLOUD_IMAGE},device=disk,bus=virtio,format=qcow2 --import --noautoconsole --vnc ${VM_NETWORK_CONFIG} --name undercloud)"
 
 stdout "Looking for the IP assigned from DHCP. One moment, please." 
 

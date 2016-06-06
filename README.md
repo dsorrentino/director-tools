@@ -28,7 +28,10 @@ Functions:
     - Configures rp_filter settings
     - Configures policy kit file for the user Ironic will use for power management
     - Installs all necessary virtualization packages
-  - Creates the infrastructure and provisioning networks
+  - Configured networking for the undercloud
+    - Can create the KVM networks if this is a LAB/all virtual setup
+    -  BETA (needs to be tested): Can configure the VM to use physical networks by either using existing network bridges
+       or creating the necessary bridges.  
   - Gather specs (CPU, Memory, Disk, IP addresses for both infrastructure & provisioning networks) for the Undercloud VM
   - Obtains base RHEL image from specified source
   - Creates disk for undercloud VM to spec
@@ -76,7 +79,9 @@ Functions:
   - Copies all logs into the logs directory
 
 Script: overcloud_create_vms.sh
-Description: Used for creating a lab-like environment on a single KVM host.
+Description: Used for creating a lab-like environment on a single KVM host. The defaults for number and
+             size of the VM's is obtained from environment/overcloud.env.  User is prompted for settings
+             and changes are persisted to the file for future runs.
 Functions:
   - Prompts & creates the various networks for the overcloud
   - Number of NIC's is configureable for each node type (control, compute, ceph-storage)
@@ -95,8 +100,3 @@ Functions:
     NOTE:  You must have iptables/firewalld configured on your KVM host to allow this connection to occur
   - Takes a snapshot of the VM at completion
   - Copies all logs into the logs directory
-
-
-
-
-

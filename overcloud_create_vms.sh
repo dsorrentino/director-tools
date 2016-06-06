@@ -6,7 +6,10 @@ source ${DIRECTOR_TOOLS}/environment/overcloud.env
 
 LOG=${DIRECTOR_TOOLS}/logs/$(date +'%Y%m%d-%H%M')-overcloud_create_vms.log
 
-${DIRECTOR_TOOLS}/functions/overcloud/create_vm/configure.sh
+stdout ""
+stdout "This script will create Virtual Machines on a KVM host to be used as Overcloud nodes."
+stdout ""
+
+${DIRECTOR_TOOLS}/functions/overcloud/create_vm/create_overcloud_environment.sh
 
 chmod 600 ${DIRECTOR_TOOLS}/environment/overcloud.env
-
